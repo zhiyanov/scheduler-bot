@@ -12,13 +12,19 @@ from TOKEN import TOKEN
 DESCRIPTION = '''
 Этот бот предназначен для бронирования временных слотов.
 Доступны следующие команды:
-/schedule -- возвращает список доступных слотов
-/book aнтон жиянов понедельник 18 15 -- бронирует слот для сдачи дз
+/schedule free -- список слотов доступных Вам;
+/schedule booked -- список занятых Вами слотов;
+/book имя фамилия день час минута -- бронирует доступный Вам слот;
+/clean день час_начала минута_начала час_конца минутa_конца -- освобождает занятые Вами слоты в промежутке "день" "час_начала":"минута_начала" - "час_конца":"минута_конца", если параметры "час_конца", "минут_конца" не заданы, освободится один слот, заданный "началом";
+
+Для создания и удаления слотов (относится к ассистентам) используются следующие команды:
+/create день час_начала минута_начала час_конца минутa_концa длительность_слота -- создает слоты в промежутке "день" "час_начала":"минута_начала" - "час_конца":"минута_конца" длительностью "длительность_слота", если параметры "час_конца", "минут_конца", "длительность_слота" не заданы, то создается один слот, заданный "началом";
+/free день час_начала минута_начала час_конца минутa_конца -- удаляет созданные Вами слоты в промежутке "день" "час_начала":"минута_начала" - "час_конца":"минута_конца", если параметры "час_конца", "минут_конца" не заданы, удалится один слот, заданный "началом";
 '''
 
-SCH_DB = pd.read_csv("./data/schedule.csv")
-STU_DB = pd.read_csv("./data/students.csv")
-ASS_DB = pd.read_csv("./data/assistants.csv")
+# SCH_DB = pd.read_csv("./data/schedule.csv")
+# STU_DB = pd.read_csv("./data/students.csv")
+# ASS_DB = pd.read_csv("./data/assistants.csv")
 
 DAY_ORDER = {
     "понедельник": 0,
@@ -44,10 +50,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    time = datetime.datetime.today()
-    hour = time.hour + 3
-    minute = time.minute
-    weekday = time.weekday()
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv")
     
     username = update.message.chat.username
     arg = update.message.text.split(" ")[-1]
@@ -58,20 +63,12 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         booked = 1
 
     if username in set(ASS_DB["username"]):
-        assistant = 1
-        condition = (SCH_DB["booked"] == booked) & \
-                (SCH_DB["assistants_username"] == username)
+        user = "assistants"
     else:
-        assistant = 0
-        condition = (SCH_DB["booked"] == booked)
-        
-        if booked:
-            condition = condition & \
-                    (SCH_DB["students_username"] == username)
-        else: 
-            condition = condition & \
-                    ((SCH_DB["day_order"] != weekday) | \
-                    ((SCH_DB["hour"] - hour) * 60 + SCH_DB["minute"] -  minute > 120))
+        user = "students"
+
+    condition = (SCH_DB["booked"] == booked) & \
+            (SCH_DB[f"{user}_username"] == username)
 
     response_db = SCH_DB.loc[condition]
     response_db = response_db.sort_values(by=[
@@ -80,26 +77,15 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "minute"
     ])
     
-    if assistant:
-        response_db = response_db[[
-            "day_name",
-            "hour",
-            "minute",
-            "students_name",
-            "students_surname",
-            "students_username"
-        ]].drop_duplicates()
-        response_db["students_username"] = "@" + response_db["students_username"]
-    else:
-        response_db = response_db[[
-            "day_name",
-            "hour",
-            "minute",
-            "assistants_name",
-            "assistants_surname",
-            "assistants_username"
-        ]].drop_duplicates()
-        response_db["assistants_username"] = "@" + response_db["assistants_username"]
+    response_db = response_db[[
+        "day_name",
+        "hour",
+        "minute",
+        f"{user}_name",
+        f"{user}_surname",
+        f"{user}_username"
+    ]].drop_duplicates()
+    response_db[f"{user}_username"] = "@" + response_db[f"{user}_username"]
 
     if not booked:
         response_db = response_db[[
@@ -144,11 +130,15 @@ def book_checker(info):
     return True
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv")
+    
     username = update.message.chat.username
     
     info = update.message.text.split(" ")[1:]
     info = [item.lower() for item in info]
-    if not book_checker(info)
+    if not book_checker(info):
         response = '''Неверный формат запроса\n'''
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
         return
@@ -212,6 +202,10 @@ def create_checker(info):
     return True
 
 async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv")
+    
     username = update.message.chat.username
 
     info = update.message.text.split(" ")[1:]
@@ -244,17 +238,25 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 start_minute = start_minute % 60
 
             slots.append((start_hour, start_minute))
-
+            start_minute += duration
+    
+    result = pd.DataFrame(SCH_DB)
     for slot in slots:
         append = pd.DataFrame(
-            [
-                day, DAY_ORDER[day],
-                slot[0], slot[1],
-                name, surname, username,
-                None, None, None,
-                0
-            ],
-            columns=[
+            data = {
+                "day_name": [day],
+                "day_order": [DAY_ORDER[day]],
+                "hour": [slot[0]],
+                "minute": [slot[1]], 
+                "assistants_name": [name],
+                "assistants_surname": [surname],
+                "assistants_username": [username],
+                "students_name": [None],
+                "students_surname": [None],
+                "students_username": [None],
+                "booked": [0]
+            }, 
+            columns = [
                 "day_name", "day_order",
                 "hour", "minute", 
                 "assistants_name", "assistants_surname", "assistants_username",
@@ -262,15 +264,16 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "booked"
             ]
         )
+        result = pd.concat([result, append], axis=0)
 
-        SCH_DB = pd.concat([SCH_DB, append], axis=0)
+    SCH_DB = result
     SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
 
-    response = f'Слот(ы) забронирован(ы)'
+    response = f'Слот(ы) созданы(ы)'
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return
 
-def clear_checker(info):
+def clean_checker(info):
     if (len(info) != 3) and (len(info) != 5):
         return False
 
@@ -284,23 +287,24 @@ def clear_checker(info):
 
     return True
 
-async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv")
+    
     username = update.message.chat.username
 
     info = update.message.text.split(" ")[1:]
     info = [item.lower() for item in info]
-    if not clear_checker(info):
+    if not clean_checker(info):
         response = "Неверный формат запроса"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
         return
 
-    if not (username in set(ASS_DB["username"])):
-        response = "У Вас нет доступа к этой команде"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
-
-    name = ASS_DB.loc[ASS_DB["username"] == username]["name"]
-    surname = ASS_DB.loc[ASS_DB["username"] == username]["surname"]
+    if username in set(ASS_DB["username"]):
+        user = "assistants"
+    else:
+        user = "students"
     
     day = info[0]
     start_hour, start_minute = format_time(int(info[1]), int(info[2]))
@@ -310,7 +314,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         end_hour, end_minute = format_time(int(info[3]), int(info[4]))
 
-    condition = (SCH_DB["day_name"] == day) & (SCH_DB["username"] == username) & \
+    condition = (SCH_DB["day_name"] == day) & (SCH_DB[f"{user}_username"] == username) & \
             (SCH_DB["hour"] * 60 + SCH_DB["minute"] >= start_hour * 60 + start_minute) & \
             (SCH_DB["hour"] * 60 + SCH_DB["minute"] <= end_hour * 60 + end_minute)
     
@@ -325,11 +329,15 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return
 
 async def free(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv")
+    
     username = update.message.chat.username
 
     info = update.message.text.split(" ")[1:]
     info = [item.lower() for item in info]
-    if not clear_checker(info):
+    if not clean_checker(info):
         response = "Неверный формат запроса"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
         return
@@ -350,7 +358,7 @@ async def free(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         end_hour, end_minute = format_time(int(info[3]), int(info[4]))
 
-    condition = (SCH_DB["day_name"] == day) & (SCH_DB["username"] == username) & \
+    condition = (SCH_DB["day_name"] == day) & (SCH_DB["assistants_username"] == username) & \
             (SCH_DB["hour"] * 60 + SCH_DB["minute"] >= start_hour * 60 + start_minute) & \
             (SCH_DB["hour"] * 60 + SCH_DB["minute"] <= end_hour * 60 + end_minute)
 
@@ -369,9 +377,15 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', start)
     schedule_handler = CommandHandler('schedule', schedule)
     book_handler = CommandHandler('book', book)
+    create_handler = CommandHandler('create', create)
+    clean_handler = CommandHandler('clean', clean)
+    free_handler = CommandHandler('free', free)
 
     application.add_handler(start_handler)
     application.add_handler(schedule_handler)
     application.add_handler(book_handler)
+    application.add_handler(create_handler)
+    application.add_handler(clean_handler)
+    application.add_handler(free_handler)
     
     application.run_polling()
