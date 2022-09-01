@@ -43,17 +43,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    time = datetime.datetime.today()
+    hour = time.hour + 3
+    minute = time.minute
+    weekday = time.weekday()
+    
     username = update.message.chat.username
-    if username in set(ASS_DB["username"]):
-        condition = (SCH_DB["booked"] == 1) & \
-                (SCH_DB["assistants_username"] == username)
-        response_db = SCH_DB.loc[condition]
-        response_db = response_db.sort_values(by=[
-            "day_order",
-            "hour",
-            "minute"
-        ])
+    arg = update.message.text.split(" ")[-1]
 
+    if arg == "free":
+        booked = 0
+    else:
+        booked = 1
+
+    if username in set(ASS_DB["username"]):
+        assistant = 1
+        condition = (SCH_DB["booked"] == booked) & \
+                (SCH_DB["assistants_username"] == username)
+    else:
+        assistant = 0
+        condition = (SCH_DB["booked"] == booked)
+        
+        if booked:
+            condition = condition & \
+                    (SCH_DB["students_username"] == username)
+        else: 
+            condition = condition & \
+                    ((SCH_DB["day_order"] != weekday) | \
+                    ((SCH_DB["hour"] - hour) * 60 + SCH_DB["minute"] -  minute > 120))
+
+    response_db = SCH_DB.loc[condition]
+    response_db = response_db.sort_values(by=[
+        "day_order",
+        "hour",
+        "minute"
+    ])
+    
+    if assistant:
         response_db = response_db[[
             "day_name",
             "hour",
@@ -62,16 +88,37 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "students_surname",
             "students_username"
         ]].drop_duplicates()
+        response_db["students_username"] = "@" + response_db["students_username"]
+    else:
+        response_db = response_db[[
+            "day_name",
+            "hour",
+            "minute",
+            "assistants_name",
+            "assistants_surname",
+            "assistants_username"
+        ]].drop_duplicates()
+        response_db["assistants_username"] = "@" + response_db["assistants_username"]
 
-        response = ""
-        for i, row in response_db.iterrows():
-            response += f'{row["day_name"]} {row["hour"]}:{row["minute"]} {row["students_name"]} {row["students_surname"]} @{row["students_username"]}'
-        
-        if response == "":
-            response = "Ваши слоты не заняты"
+    if not booked:
+        response_db = response_db[[
+            "day_name",
+            "hour",
+            "minute"
+        ]].drop_duplicates()
 
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
+    response = ""
+    columns = response_db.columns
+    for i, row in response_db.iterrows():
+        for column in columns:
+            response += str(row[column]) + " "
+        response[-1] = "\n"
+    
+    if response == "":
+        response = "Ваши слоты не заняты"
+
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    return
 
     time = datetime.datetime.today()
     hour = time.hour + 3
