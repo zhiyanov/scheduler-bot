@@ -1,391 +1,278 @@
+#!/usr/bin/env python
+# pylint: disable=unused-argument, wrong-import-position
+# This program is dedicated to the public domain under the CC0 license.
+
+"""Simple inline keyboard bot with multiple CallbackQueryHandlers.
+
+This Bot uses the Application class to handle the bot.
+First, a few callback functions are defined as callback query handler. Then, those functions are
+passed to the Application and registered at their respective places.
+Then, the bot is started and runs until we press Ctrl-C on the command line.
+Usage:
+Example of a bot that uses inline keyboard that has multiple CallbackQueryHandlers arranged in a
+ConversationHandler.
+Send /start to initiate the conversation.
+Press Ctrl-C on the command line to stop the bot.
+"""
 import logging
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler
-
-import pandas as pd
-import numpy as np
-import datetime
-
-from TOKEN import TOKEN 
-
-
-DESCRIPTION = '''
-Этот бот предназначен для бронирования временных слотов.
-Доступны следующие команды:
-/schedule free -- список слотов доступных Вам;
-/schedule booked -- список занятых Вами слотов;
-/book имя фамилия день час минута -- бронирует доступный Вам слот;
-/clean день час_начала минута_начала час_конца минутa_конца -- освобождает занятые Вами слоты в промежутке "день" "час_начала":"минута_начала" - "час_конца":"минута_конца", если параметры "час_конца", "минут_конца" не заданы, освободится один слот, заданный "началом";
-
-Для создания и удаления слотов (относится к ассистентам) используются следующие команды:
-/create день час_начала минута_начала час_конца минутa_концa длительность_слота -- создает слоты в промежутке "день" "час_начала":"минута_начала" - "час_конца":"минута_конца" длительностью "длительность_слота", если параметры "час_конца", "минут_конца", "длительность_слота" не заданы, то создается один слот, заданный "началом";
-/free день час_начала минута_начала час_конца минутa_конца -- удаляет созданные Вами слоты в промежутке "день" "час_начала":"минута_начала" - "час_конца":"минута_конца", если параметры "час_конца", "минут_конца" не заданы, удалится один слот, заданный "началом";
-'''
-
-# SCH_DB = pd.read_csv("./data/schedule.csv")
-# STU_DB = pd.read_csv("./data/students.csv")
-# ASS_DB = pd.read_csv("./data/assistants.csv")
-
-DAY_ORDER = {
-    "понедельник": 0,
-    "вторник": 1,
-    "среда": 2,
-    "четверг": 3,
-    "пятница": 4,
-    "суббота": 5,
-    "воскресение": 6
-}
-
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    ConversationHandler,
 )
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=DESCRIPTION
-    )
-    return
+import pandas as pd
+from TOKEN import TOKEN
 
-async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# States
+ROUTE = 0
+
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Send message on `/start`."""
+    # Get user that sent /start and log his name
+    user = update.message.from_user
+    logger.info("User %s started the conversation.", user.first_name)
+    # Build InlineKeyboard where each button has a displayed text
+    # and a string as callback_data
+    # The keyboard is a list of button rows, where each row is in turn
+    # a list (hence `[[...]]`).
+    keyboard = [
+        [InlineKeyboardButton("расписание", callback_data="SCHEDULE"),
+        InlineKeyboardButton("бронирование", callback_data="BOOK"),
+        InlineKeyboardButton("освобождение", callback_data="CLEAR")]
+        
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Send message with text and appended InlineKeyboard
+    await update.message.reply_text("что будем делать, начальник?", reply_markup=reply_markup)
+    # Tell ConversationHandler that we're in state `FIRST` now
+    return ROUTE
+
+
+async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show new choice of buttons"""
+    query = update.callback_query
+    keyboard = [
+        [InlineKeyboardButton("свободен", callback_data="SCHEDULE_FREE"),
+        InlineKeyboardButton("занят", callback_data="SCHEDULE_BOOKED")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text="какие слоты вас интересуют?", reply_markup=reply_markup
+    )
+    return ROUTE
+
+
+async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB = pd.read_csv("./data/schedule.csv")
     STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv")
-    
-    username = update.message.chat.username
-    arg = update.message.text.split(" ")[-1]
+    ASS_DB = pd.read_csv("./data/assistants.csv") 
 
-    if arg == "free":
+    query = update.callback_query
+    query_type = query["data"].lstrip("SCHEDULE_")
+    if query_type == "FREE":
         booked = 0
     else:
         booked = 1
-
+    
+    username = query["message"]["chat"]["username"]
     if username in set(ASS_DB["username"]):
-        user = "assistants"
+        user = "assistant"
+        other = "student"
     else:
-        user = "students"
+        user = "student"
+        other = "assistant"
 
-    condition = (SCH_DB["booked"] == booked) & \
-            (SCH_DB[f"{user}_username"] == username)
-
+    condition = (SCH_DB["booked"] == booked)
+    if booked:
+        condition = condition & \
+            (SCH_DB[f"{user}"] == username)
     response_db = SCH_DB.loc[condition]
+
+    response_db["time"] = response_db["hour"].astype("str") + ":" + response_db["minute"].astype("str")
     response_db = response_db.sort_values(by=[
-        "day_order",
+        "order",
         "hour",
         "minute"
-    ])
-    
-    response_db = response_db[[
-        "day_name",
-        "hour",
-        "minute",
-        f"{user}_name",
-        f"{user}_surname",
-        f"{user}_username"
+    ])[[
+        "day",
+        "time",
+        f"{other}"
     ]].drop_duplicates()
-    response_db[f"{user}_username"] = "@" + response_db[f"{user}_username"]
+    response_db[f"{other}"] = "@" + response_db[f"{other}"]
 
     if not booked:
         response_db = response_db[[
-            "day_name",
-            "hour",
-            "minute"
+            "day",
+            "time"
         ]].drop_duplicates()
-
+    
     response = ""
     columns = response_db.columns
     for i, row in response_db.iterrows():
         for column in columns:
-            response += str(row[column]) + " "
-        response = response[:-1] + "\n"
-    
+            response += str(row[column]) + ", "
+        response = response[:-2] + "\n"
     if response == "":
-        if booked:
-            response = "Все Ваши слоты свободны"
-        else:
-            response = "Все Ваши слоты заняты"
+       response = "ничего не найдено"
 
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-    return
+    await query.edit_message_text(
+        text=response
+    )
+    return ROUTE
 
-def book_checker(info):
-    if len(info) != 5:
-        return False
-    
-    name = info[0]
-    surname = info[1]
-    day = info[2]
-    hour = info[3]
-    minute = info[4]
-    
-    for i in range(3, len(info)):
-        if not info[i].isnumeric():
-            return False
 
-    if not day in DAY_ORDER:
-        return False
-
-    return True
-
-async def book(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB = pd.read_csv("./data/schedule.csv")
     STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv") 
     
-    username = update.message.chat.username
+    query = update.callback_query
+
+    condition = (SCH_DB["booked"] == 0)
+    response_db = SCH_DB.loc[condition]
+    if not len(response_db):
+        await query.edit_message_text(
+            text="все слоты заняты"
+        )
+        return ROUTE
     
-    info = update.message.text.split(" ")[1:]
-    info = [item.lower() for item in info]
-    if not book_checker(info):
-        response = '''Неверный формат запроса\n'''
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
+    response_db["time"] = response_db["hour"].astype("str") + ":" + response_db["minute"].astype("str")
+    response_db = response_db.sort_values(by=[
+        "order",
+        "hour",
+        "minute"
+    ])[[
+        "day",
+        "time",
+    ]].drop_duplicates()
+    
+    columns = response_db.columns.to_list()
+    keyboard = []
+    for i, row in response_db.iterrows():
+        text = ""
+        for column in columns:
+           text += row[column] + ", "
+        text = text[:-2]
+        keyboard.append( 
+            [InlineKeyboardButton(text, callback_data="BOOK_" + text)],
+        )
 
-    name = info[0]
-    surname = info[1]
-    day = info[2]
-    hour = int(info[3])
-    minute = int(info[4])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text="cписок свободных слотов", reply_markup=reply_markup
+    )
+    # Transfer to conversation state `SECOND`
+    return ROUTE
 
-    condition = (STU_DB["surname"] == surname) & \
-            (STU_DB["name"] == name)
-    if not len(STU_DB.loc[condition]):
-        response = f'Студент {name},{surname} отсутсвует в базе'
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return 
+async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv") 
+
+    query = update.callback_query
+    username = query["message"]["chat"]["username"]
+    if not (username in set(STU_DB["username"])):
+        await query.edit_message_text(
+            text="вы не найдены в базе студентов"
+        )
+        return ROUTE
+
+    day, time = query["data"].lstrip("BOOK_").split(", ")
+    hour, minute = map(int(), time.split(":"))
 
     condition = (SCH_DB["booked"] == 0) & \
-            (SCH_DB["day_name"] == day) & \
-            (SCH_DB["hour"] == hour) & \
-            (SCH_DB["minute"] == minute)
-    
+        (SCH_DB["day"] == day) & \
+        (SCH_DB["hour"] == hour) & \
+        (SCH_DB["minute"] == minute)
+
     if not len(SCH_DB.loc[condition]):
-        response = f'Слот {day} {hour} {minute} отсутвует'
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return 
+        await query.edit_message_text(
+            text="этот слот уже успели забронировать"
+        )
+        return ROUTE
 
     condition = condition.idxmax() if condition.any() else np.repeat(False, len(SCH_DB))
 
-    SCH_DB.loc[condition, "students_name"] = name
-    SCH_DB.loc[condition, "students_surname"] = surname
-    SCH_DB.loc[condition, "students_username"] = username
+    SCH_DB.loc[condition, "student"] = username
     SCH_DB.loc[condition, "booked"] = 1
     SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
-    
-    response = f'Слот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistants_username"]}'
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-    return
 
-def format_time(hour, minute):
-    hour = min(int(hour), 23)
-    minute = min(int(minute), 59)
+    response = f'cлот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistant"]}'
+    await query.edit_message_text(
+        text=response
+    )
+    return ROUTE
 
-    hour = max(hour, 0)
-    minute = max(minute, 0)
+async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show new choice of buttons. This is the end point of the conversation."""
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("Nah, I've had enough ...", callback_data="CLEAR_1,18,15")],
+        [InlineKeyboardButton("Nah, I've had enough ...", callback_data="CLEAR_1,18,30")],
+        [InlineKeyboardButton("Nah, I've had enough ...", callback_data="CLEAR_1,18,45")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text="cписок занятых слотов", reply_markup=reply_markup
+    )
+    # Transfer to conversation state `SECOND`
+    return ROUTE
 
-    return hour, minute
+async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show new choice of buttons. This is the end point of the conversation."""
+    query = update.callback_query
+    print("QUERY", query)
+    print("CONTEXT", context)
+    await query.edit_message_text(
+        text="слот освобожден"
+    )
+    # Transfer to conversation state `SECOND`
+    return ROUTE
 
-def create_checker(info):
-    if (len(info) != 3) and (len(info) != 6):
-        return False
+def main() -> None:
+    """Run the bot."""
+    # Create the Application and pass it your bot's token.
+    application = Application.builder().token(TOKEN).build()
 
-    day = info[0]
-    if not day in DAY_ORDER:
-        return False
-    
-    for i in range(1, len(info)):
-        if not info[i].isnumeric():
-            return False
-
-    return True
-
-async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv")
-    
-    username = update.message.chat.username
-
-    info = update.message.text.split(" ")[1:]
-    info = [item.lower() for item in info]
-    if not create_checker(info):
-        response = "Неверный формат запроса"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
- 
-    if not (username in set(ASS_DB["username"])):
-        response = "У Вас нет доступа к этой команде"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
-
-    name = ASS_DB.loc[ASS_DB["username"] == username]["name"]
-    surname = ASS_DB.loc[ASS_DB["username"] == username]["surname"]
-    
-    day = info[0]
-    start_hour, start_minute = format_time(int(info[1]), int(info[2]))
-    
-    slots = [(start_hour, start_minute)]
-    if (len(info) == 6):
-        end_hour, end_minute = format_time(int(info[3]), int(info[4]))
-        _, duration = format_time(0, int(info[5]))
-        
-        start_minute += duration
-        while (end_hour - start_hour) * 60 + end_minute - start_minute > 0:
-            if (start_minute >= 60):
-                start_hour += start_minute // 60
-                start_minute = start_minute % 60
-
-            slots.append((start_hour, start_minute))
-            start_minute += duration
-    
-    result = pd.DataFrame(SCH_DB)
-    for slot in slots:
-        append = pd.DataFrame(
-            data = {
-                "day_name": [day],
-                "day_order": [DAY_ORDER[day]],
-                "hour": [slot[0]],
-                "minute": [slot[1]], 
-                "assistants_name": [name],
-                "assistants_surname": [surname],
-                "assistants_username": [username],
-                "students_name": [None],
-                "students_surname": [None],
-                "students_username": [None],
-                "booked": [0]
-            }, 
-            columns = [
-                "day_name", "day_order",
-                "hour", "minute", 
-                "assistants_name", "assistants_surname", "assistants_username",
-                "students_name", "students_surname", "students_username",
-                "booked"
+    # Setup conversation handler with the states FIRST and SECOND
+    # Use the pattern parameter to pass CallbackQueries with specific
+    # data pattern to the corresponding handlers.
+    # ^ means "start of line/string"
+    # $ means "end of line/string"
+    # So ^ABC$ will only allow 'ABC'
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            ROUTE: [
+                CallbackQueryHandler(schedule, pattern="^" + "SCHEDULE" + "$"),
+                CallbackQueryHandler(schedule_slot, pattern="SCHEDULE_"),
+                CallbackQueryHandler(book, pattern="^" + "BOOK" + "$"),
+                CallbackQueryHandler(book_slot, pattern="BOOK_*"),
+                CallbackQueryHandler(book, pattern="^" + "CLEAR" + "$"),
+                CallbackQueryHandler(book_slot, pattern="CLEAR_*")
             ]
-        )
-        result = pd.concat([result, append], axis=0)
+        },
+        fallbacks=[CommandHandler("start", start)],
+    )
 
-    SCH_DB = result
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
+    # Add ConversationHandler to application that will be used for handling updates
+    application.add_handler(conv_handler)
 
-    response = f'Слот(ы) созданы(ы)'
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-    return
-
-def clean_checker(info):
-    if (len(info) != 3) and (len(info) != 5):
-        return False
-
-    day = info[0]
-    if not day in DAY_ORDER:
-        return False
-    
-    for i in range(1, len(info)):
-        if not info[i].isnumeric():
-            return False
-
-    return True
-
-async def clean(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv")
-    
-    username = update.message.chat.username
-
-    info = update.message.text.split(" ")[1:]
-    info = [item.lower() for item in info]
-    if not clean_checker(info):
-        response = "Неверный формат запроса"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
-
-    if username in set(ASS_DB["username"]):
-        user = "assistants"
-    else:
-        user = "students"
-    
-    day = info[0]
-    start_hour, start_minute = format_time(int(info[1]), int(info[2]))
- 
-    if (len(info) != 5):
-        end_hour, end_minute = start_hour, end_minute
-    else:
-        end_hour, end_minute = format_time(int(info[3]), int(info[4]))
-
-    condition = (SCH_DB["day_name"] == day) & (SCH_DB[f"{user}_username"] == username) & \
-            (SCH_DB["hour"] * 60 + SCH_DB["minute"] >= start_hour * 60 + start_minute) & \
-            (SCH_DB["hour"] * 60 + SCH_DB["minute"] <= end_hour * 60 + end_minute)
-    
-    SCH_DB.loc[condition, "booked"] = 0
-    SCH_DB.loc[condition, "students_name"] = None
-    SCH_DB.loc[condition, "students_surname"] = None
-    SCH_DB.loc[condition, "students_username"] = None
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
-
-    response = f'Слот(ы) освобожден(ы)'
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-    return
-
-async def free(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv")
-    
-    username = update.message.chat.username
-
-    info = update.message.text.split(" ")[1:]
-    info = [item.lower() for item in info]
-    if not clean_checker(info):
-        response = "Неверный формат запроса"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
-
-    if not (username in set(ASS_DB["username"])):
-        response = "У Вас нет доступа к этой команде"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-        return
-
-    name = ASS_DB.loc[ASS_DB["username"] == username]["name"]
-    surname = ASS_DB.loc[ASS_DB["username"] == username]["surname"]
-    
-    day = info[0]
-    start_hour, start_minute = format_time(int(info[1]), int(info[2]))
- 
-    if (len(info) != 5):
-        end_hour, end_minute = start_hour, end_minute
-    else:
-        end_hour, end_minute = format_time(int(info[3]), int(info[4]))
-
-    condition = (SCH_DB["day_name"] == day) & (SCH_DB["assistants_username"] == username) & \
-            (SCH_DB["hour"] * 60 + SCH_DB["minute"] >= start_hour * 60 + start_minute) & \
-            (SCH_DB["hour"] * 60 + SCH_DB["minute"] <= end_hour * 60 + end_minute)
-
-    
-    SCH_DB = SCH_DB.loc[~condition]
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
-
-    response = f'Слот(ы) освобожден(ы)'
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-    return
-    pass
-
-if __name__ == '__main__':
-    application = ApplicationBuilder().token(TOKEN).build()
-    
-    start_handler = CommandHandler('start', start)
-    schedule_handler = CommandHandler('schedule', schedule)
-    book_handler = CommandHandler('book', book)
-    create_handler = CommandHandler('create', create)
-    clean_handler = CommandHandler('clean', clean)
-    free_handler = CommandHandler('free', free)
-
-    application.add_handler(start_handler)
-    application.add_handler(schedule_handler)
-    application.add_handler(book_handler)
-    application.add_handler(create_handler)
-    application.add_handler(clean_handler)
-    application.add_handler(free_handler)
-    
+    # Run the bot until the user presses Ctrl-C
     application.run_polling()
+
+
+if __name__ == "__main__":
+    main()
