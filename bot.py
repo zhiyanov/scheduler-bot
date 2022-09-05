@@ -1,19 +1,3 @@
-#!/usr/bin/env python
-# pylint: disable=unused-argument, wrong-import-position
-# This program is dedicated to the public domain under the CC0 license.
-
-"""Simple inline keyboard bot with multiple CallbackQueryHandlers.
-
-This Bot uses the Application class to handle the bot.
-First, a few callback functions are defined as callback query handler. Then, those functions are
-passed to the Application and registered at their respective places.
-Then, the bot is started and runs until we press Ctrl-C on the command line.
-Usage:
-Example of a bot that uses inline keyboard that has multiple CallbackQueryHandlers arranged in a
-ConversationHandler.
-Send /start to initiate the conversation.
-Press Ctrl-C on the command line to stop the bot.
-"""
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -38,29 +22,41 @@ logger = logging.getLogger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Send message on `/start`."""
-    # Get user that sent /start and log his name
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    
     user = update.message.from_user
-    logger.info("User %s started the conversation.", user.first_name)
-    # Build InlineKeyboard where each button has a displayed text
-    # and a string as callback_data
-    # The keyboard is a list of button rows, where each row is in turn
-    # a list (hence `[[...]]`).
+    username = user.username
+
+    if not ((username in set(ASS_DB["username"])) or (username in set(STU_DB["username"]))):
+        await query.edit_message_text(
+            text="вac нет в базе"
+        )
+        return ROUTE
+
+    chat_id = str(update.message.chat.id)
+
+    if username in set(STU_DB["username"]):
+        STU_DB.loc[STU_DB["username"] == username, "id"] = chat_id
+        STU_DB.to_csv("./data/students.csv", sep=",", index=None)
+    if username in set(ASS_DB["username"]):
+        ASS_DB.loc[ASS_DB["username"] == username, "id"] = chat_id
+        ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
+
     keyboard = [
         [InlineKeyboardButton("расписание", callback_data="SCHEDULE"),
         InlineKeyboardButton("бронирование", callback_data="BOOK"),
-        InlineKeyboardButton("освобождение", callback_data="CLEAR")]
-        
+        InlineKeyboardButton("освобождение", callback_data="CLEAR")]        
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    # Send message with text and appended InlineKeyboard
-    await update.message.reply_text("что будем делать, начальник?", reply_markup=reply_markup)
-    # Tell ConversationHandler that we're in state `FIRST` now
+    
+    await update.message.reply_text(
+        "что будем делать?",
+        reply_markup=reply_markup
+    )
     return ROUTE
 
-
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Show new choice of buttons"""
     query = update.callback_query
     keyboard = [
         [InlineKeyboardButton("свободен", callback_data="SCHEDULE_FREE"),
@@ -68,7 +64,8 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        text="какие слоты вас интересуют?", reply_markup=reply_markup
+        text="какие слоты вас интересуют?",
+        reply_markup=reply_markup
     )
     return ROUTE
 
@@ -124,7 +121,8 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             response += str(row[column]) + ", "
         response = response[:-2] + "\n"
     if response == "":
-       response = "ничего не найдено"
+       response = "ничего не найдено\n"
+    response = response[:-1]
 
     await query.edit_message_text(
         text=response
@@ -170,9 +168,9 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        text="cписок свободных слотов", reply_markup=reply_markup
+        text="cписок свободных слотов",
+        reply_markup=reply_markup
     )
-    # Transfer to conversation state `SECOND`
     return ROUTE
 
 async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -184,12 +182,12 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     username = query["message"]["chat"]["username"]
     if not (username in set(STU_DB["username"])):
         await query.edit_message_text(
-            text="вы не найдены в базе студентов"
+            text="вас нет в базе"
         )
         return ROUTE
 
     day, time = query["data"].lstrip("BOOK_").split(", ")
-    hour, minute = map(int(), time.split(":"))
+    hour, minute = map(int, time.split(":"))
 
     condition = (SCH_DB["booked"] == 0) & \
         (SCH_DB["day"] == day) & \
@@ -215,43 +213,109 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Show new choice of buttons. This is the end point of the conversation."""
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("Nah, I've had enough ...", callback_data="CLEAR_1,18,15")],
-        [InlineKeyboardButton("Nah, I've had enough ...", callback_data="CLEAR_1,18,30")],
-        [InlineKeyboardButton("Nah, I've had enough ...", callback_data="CLEAR_1,18,45")]
-    ]
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    
+    query = update.callback_query 
+    username = query["message"]["chat"]["username"]
+    if username in set(ASS_DB["username"]):
+        user = "assistant"
+        other = "student" 
+    elif username in set(STU_DB["username"]):
+        user = "student"
+        other = "assistant"
+    else:
+        await query.edit_message_text(
+            text="вac нет в базе"
+        )
+        return ROUTE
+
+    condition = (SCH_DB["booked"] == 1) & \
+        (SCH_DB[user] == username)
+
+    response_db = SCH_DB.loc[condition]
+    if not len(response_db):
+        await query.edit_message_text(
+            text="у вас нет занятых слотов"
+        )
+        return ROUTE
+    
+    response_db["time"] = response_db["hour"].astype("str") + ":" + response_db["minute"].astype("str")
+    response_db = response_db.sort_values(by=[
+        "order",
+        "hour",
+        "minute"
+    ])[[
+        "day",
+        "time",
+        f"{other}"
+    ]].drop_duplicates()
+    
+    columns = response_db.columns.to_list()
+    keyboard = []
+    for i, row in response_db.iterrows():
+        text = ""
+        for column in columns:
+           text += row[column] + ", "
+        text = text[:-2]
+        keyboard.append( 
+            [InlineKeyboardButton(text, callback_data="CLEAR_" + text)],
+        )
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         text="cписок занятых слотов", reply_markup=reply_markup
     )
-    # Transfer to conversation state `SECOND`
     return ROUTE
 
 async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Show new choice of buttons. This is the end point of the conversation."""
-    query = update.callback_query
-    print("QUERY", query)
-    print("CONTEXT", context)
+    SCH_DB = pd.read_csv("./data/schedule.csv")
+    STU_DB = pd.read_csv("./data/students.csv")
+    ASS_DB = pd.read_csv("./data/assistants.csv") 
+
+    query = update.callback_query 
+    username = query["message"]["chat"]["username"]
+    if username in set(ASS_DB["username"]):
+        user = "assistant"
+        other = "student" 
+    elif username in set(STU_DB["username"]):
+        user = "student"
+        other = "assistant"
+    else:
+        await query.edit_message_text(
+            text="вac нет в базе"
+        )
+        return ROUTE
+
+    day, time, othername = query["data"].lstrip("CLEAR_").split(", ")
+    hour, minute = map(int, time.split(":"))
+
+    condition = (SCH_DB["booked"] == 1) & \
+        (SCH_DB["day"] == day) & \
+        (SCH_DB["hour"] == hour) & \
+        (SCH_DB["minute"] == minute) & \
+        (SCH_DB[f"{other}"] == othername)
+
+    if not len(SCH_DB.loc[condition]):
+        await query.edit_message_text(
+            text="этот слот уже успели освободить"
+        )
+        return ROUTE
+
+    SCH_DB.loc[condition, "student"] = None
+    SCH_DB.loc[condition, "booked"] = 0
+    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
+
+    response = f'cлот освобожден, об этом можно написать @{othername}'
     await query.edit_message_text(
-        text="слот освобожден"
+        text=response
     )
-    # Transfer to conversation state `SECOND`
     return ROUTE
 
 def main() -> None:
-    """Run the bot."""
-    # Create the Application and pass it your bot's token.
     application = Application.builder().token(TOKEN).build()
 
-    # Setup conversation handler with the states FIRST and SECOND
-    # Use the pattern parameter to pass CallbackQueries with specific
-    # data pattern to the corresponding handlers.
-    # ^ means "start of line/string"
-    # $ means "end of line/string"
-    # So ^ABC$ will only allow 'ABC'
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -260,19 +324,16 @@ def main() -> None:
                 CallbackQueryHandler(schedule_slot, pattern="SCHEDULE_"),
                 CallbackQueryHandler(book, pattern="^" + "BOOK" + "$"),
                 CallbackQueryHandler(book_slot, pattern="BOOK_*"),
-                CallbackQueryHandler(book, pattern="^" + "CLEAR" + "$"),
-                CallbackQueryHandler(book_slot, pattern="CLEAR_*")
+                CallbackQueryHandler(clear, pattern="^" + "CLEAR" + "$"),
+                CallbackQueryHandler(clear_slot, pattern="CLEAR_*")
             ]
         },
         fallbacks=[CommandHandler("start", start)],
     )
 
-    # Add ConversationHandler to application that will be used for handling updates
     application.add_handler(conv_handler)
 
-    # Run the bot until the user presses Ctrl-C
     application.run_polling()
-
 
 if __name__ == "__main__":
     main()
