@@ -9,7 +9,10 @@ from telegram.ext import (
 )
 
 import pandas as pd
+from datetime import datetime
+
 from TOKEN import TOKEN
+from utils import *
 
 # States
 ROUTE = 0
@@ -20,10 +23,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+def read_db():
+    SCH_DB = pd.read_csv("./data/schedule.csv")
     STU_DB = pd.read_csv("./data/students.csv")
     ASS_DB = pd.read_csv("./data/assistants.csv") 
+    return SCH_DB, STU_DB, ASS_DB
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    _, STU_DB, ASS_DB = read_db()
     
     user = update.message.from_user
     username = user.username
@@ -71,9 +78,7 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    _, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
     query_type = query["data"].lstrip("SCHEDULE_")
@@ -131,9 +136,7 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    _, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query
 
@@ -174,9 +177,7 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    _, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
     username = query["message"]["chat"]["username"]
@@ -205,6 +206,13 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB.loc[condition, "student"] = username
     SCH_DB.loc[condition, "booked"] = 1
     SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
+    
+    dt = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    append = SCH_DB.loc[condition]
+    append["log"] = [dt] * len(append)
+    archive = pd.read_csv("./data/archive.csv", sep=",")
+    archive = pd.concat([archive, append], axis=0)
+    archive.to_csv("./data/archive.csv", sep=",", index=None)
 
     response = f'cлот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistant"]}'
     await query.edit_message_text(
@@ -213,9 +221,7 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    _, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query 
     username = query["message"]["chat"]["username"]
@@ -270,9 +276,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    _, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query 
     username = query["message"]["chat"]["username"]
@@ -302,6 +306,8 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             text="этот слот уже успели освободить"
         )
         return ROUTE
+    
+    archive = pd.read_csv("./data/archive.csv", sep=",")
 
     SCH_DB.loc[condition, "student"] = None
     SCH_DB.loc[condition, "booked"] = 0
@@ -311,6 +317,103 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await query.edit_message_text(
         text=response
     )
+    return ROUTE
+
+async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _, STU_DB, ASS_DB = read_db()
+
+    username = update.message.chat.username
+
+    info = update.message.text.split(" ")[1:]
+    info = [item.lower() for item in info]
+    if not create_checker(info):
+        response = "неверный формат команды"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        return ROUTE
+
+    if not (username in set(ASS_DB["username"])):
+        response = "у вас нет доступа к этой команде"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        return ROUTE
+
+    day = info[0]
+    start_hour, start_minute = format_time(int(info[1]), int(info[2]))
+
+    slots = [(start_hour, start_minute)]
+    if (len(info) == 6):
+        end_hour, end_minute = format_time(int(info[3]), int(info[4]))
+        _, duration = format_time(0, int(info[5]))
+
+        start_minute += duration
+        while (end_hour - start_hour) * 60 + end_minute - start_minute > 0:
+            if (start_minute >= 60):
+                start_hour += start_minute // 60
+                start_minute = start_minute % 60
+
+            slots.append((start_hour, start_minute))
+            start_minute += duration
+
+    result = pd.DataFrame(SCH_DB)
+    for slot in slots:
+        append = pd.DataFrame(
+            data = {
+                "day": [day],
+                "order": [DAY_ORDER[day]],
+                "hour": [slot[0]],
+                "minute": [slot[1]],
+                "assistant": [username],
+                "student": [None],
+                "booked": [0]
+            }, columns = [
+                "day", "order",
+                "hour", "minute",
+                "assistant", "student",
+                "booked"
+            ]
+        )
+        result = pd.concat([result, append], axis=0)
+
+    SCH_DB = result
+    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
+
+    response = f'cлот(ы) созданы(ы)'
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    return ROUTE
+
+async def free(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _, STU_DB, ASS_DB = read_db()
+
+    username = update.message.chat.username
+
+    info = update.message.text.split(" ")[1:]
+    info = [item.lower() for item in info]
+    if not free_checker(info):
+        response = "неверный формат запроса"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        return ROUTE
+
+    if not (username in set(ASS_DB["username"])):
+        response = "у вас нет доступа к этой команде"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+        return ROUTE
+
+    day = info[0]
+    start_hour, start_minute = format_time(int(info[1]), int(info[2]))
+
+    if (len(info) != 5):
+        end_hour, end_minute = start_hour, end_minute
+    else:
+        end_hour, end_minute = format_time(int(info[3]), int(info[4]))
+
+    condition = (SCH_DB["day"] == day) & (SCH_DB["assistant"] == username) & \
+        (SCH_DB["hour"] * 60 + SCH_DB["minute"] >= start_hour * 60 + start_minute) & \
+        (SCH_DB["hour"] * 60 + SCH_DB["minute"] <= end_hour * 60 + end_minute)
+
+    SCH_DB = SCH_DB.loc[~condition]
+    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
+
+    response = f'cлот(ы) удален(ы)'
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return ROUTE
 
 def main() -> None:
@@ -330,8 +433,12 @@ def main() -> None:
         },
         fallbacks=[CommandHandler("start", start)],
     )
-
     application.add_handler(conv_handler)
+
+    create_handler = CommandHandler('create', create)
+    free_handler = CommandHandler('free', free)
+    application.add_handler(create_handler)
+    application.add_handler(free_handler)
 
     application.run_polling()
 

@@ -5,27 +5,7 @@ import pandas as pd
 import asyncio
 
 from TOKEN import TOKEN
-
-DAY_ORDER = {
-    "понедельник": 0,
-    "вторник": 1,
-    "среда": 2,
-    "четверг": 3,
-    "пятница": 4,
-    "суббота": 5,
-    "воскресение": 6
-}
-
-ORDER_DAY = {
-    0: "понедельник",
-    1: "вторник",
-    2: "среда",
-    3: "четверг",
-    4: "пятница",
-    5: "суббота",
-    6: "воскресение"
-}
-
+from utils import DAY_ORDER, ORDER_DAY
 
 async def send(bot, cid, text):
     time.sleep(20)
@@ -70,7 +50,7 @@ while True:
             print(student_id)
             # asyncio.run(send(bot, student_id, text + f"@{slot['assistant']}"))
     
-    time.sleep(40)
+    time.sleep(30)
 
 
 
