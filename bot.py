@@ -25,8 +25,14 @@ logger = logging.getLogger(__name__)
 
 def read_db():
     SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv") 
+    STU_DB = pd.read_csv("./data/students.csv", dtype={
+        "username": "str",
+        "id": "str"
+    })
+    ASS_DB = pd.read_csv("./data/assistants.csv", dtype={
+        "username": "str",
+        "id": "str"
+    })
     return SCH_DB, STU_DB, ASS_DB
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -207,13 +213,6 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB.loc[condition, "booked"] = 1
     SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
     
-    append = SCH_DB.loc[condition]
-    append["log"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-    archive = pd.read_csv("./data/archive.csv", sep=",")
-    archive = archive.append(append, ignore_index=True)
-    archive.to_csv("./data/archive.csv", sep=",", index=None)
-
     # response = f'cлот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistant"]}'
     response = 'cлот забронирован'
     await query.edit_message_text(
@@ -344,9 +343,10 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if (len(info) == 6):
         end_hour, end_minute = format_time(int(info[3]), int(info[4]))
         _, duration = format_time(0, int(info[5]))
+        duration = min(15, duration)
 
         start_minute += duration
-        while (end_hour - start_hour) * 60 + end_minute - start_minute > 0:
+        while (end_hour - start_hour) * 60 + end_minute - start_minute >= 0:
             if (start_minute >= 60):
                 start_hour += start_minute // 60
                 start_minute = start_minute % 60
