@@ -14,6 +14,7 @@ from datetime import datetime
 import warnings
 
 from TOKEN import TOKEN
+from ADMIN import ADMIN
 from utils import *
 
 DESCRIPTION = \
@@ -75,8 +76,22 @@ def write_db():
     ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
     SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
 
+async def dump(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user = update.message.from_user
+    username = user.username
+
+    if not (username == ADMIN):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="вас нет в базе")
+        return ROUTE
+    
+    write_db()
+    response = "данные сохранены"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    return ROUTE
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
+
     user = update.message.from_user
     username = user.username
 
@@ -88,17 +103,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if username in set(STU_DB["username"]):
         STU_DB.loc[STU_DB["username"] == username, "id"] = chat_id
-        STU_DB.to_csv("./data/students.csv", sep=",", index=None)
     if username in set(ASS_DB["username"]):
         ASS_DB.loc[ASS_DB["username"] == username, "id"] = chat_id
-        ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
     
     response = DESCRIPTION
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return ROUTE
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
     
     user = update.message.from_user
     username = user.username
@@ -113,13 +126,11 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if username in set(STU_DB["username"]):
         STU_DB.loc[STU_DB["username"] == username, "id"] = chat_id
-        STU_DB.to_csv("./data/students.csv", sep=",", index=None)
     if username in set(ASS_DB["username"]):
         ASS_DB.loc[ASS_DB["username"] == username, "id"] = chat_id
-        ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
 
     keyboard = [
-        # [InlineKeyboardButton("расписание", callback_data="SCHEDULE"),
+        [InlineKeyboardButton("расписание", callback_data="SCHEDULE")],
         [InlineKeyboardButton("бронирование", callback_data="BOOK"),
         InlineKeyboardButton("освобождение", callback_data="CLEAR")]        
     ]
@@ -145,7 +156,7 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
 
     query = update.callback_query
     query_type = query["data"].lstrip("SCHEDULE_")
@@ -202,7 +213,7 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return ROUTE
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
     
     query = update.callback_query
 
@@ -243,7 +254,7 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
 
     query = update.callback_query
     username = query["message"]["chat"]["username"]
@@ -271,9 +282,7 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     SCH_DB.loc[condition, "student"] = username
     SCH_DB.loc[condition, "booked"] = 1
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
     
-    # response = f'cлот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistant"]}'
     response = 'cлот забронирован'
     await query.edit_message_text(
         text=response
@@ -281,7 +290,7 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
     
     query = update.callback_query 
     username = query["message"]["chat"]["username"]
@@ -336,7 +345,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
 
     query = update.callback_query 
     username = query["message"]["chat"]["username"]
@@ -367,11 +376,8 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ROUTE
     
-    archive = pd.read_csv("./data/archive.csv", sep=",")
-
     SCH_DB.loc[condition, "student"] = None
     SCH_DB.loc[condition, "booked"] = 0
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
 
     response = f'cлот освобожден, об этом можно написать @{othername}'
     await query.edit_message_text(
@@ -380,7 +386,7 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
 
     username = update.message.chat.username
 
@@ -435,14 +441,13 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         result = pd.concat([result, append], axis=0)
 
     SCH_DB = result
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
 
     response = f'cлот(ы) созданы(ы)'
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return ROUTE
 
 async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db()
+    global SCH_DB, STU_DB, ASS_DB
 
     username = update.message.chat.username
 
@@ -471,7 +476,6 @@ async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         (SCH_DB["hour"] * 60 + SCH_DB["minute"] <= end_hour * 60 + end_minute)
 
     SCH_DB = SCH_DB.loc[~condition]
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
 
     response = f'cлот(ы) удален(ы)'
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
@@ -499,9 +503,11 @@ def main() -> None:
     start_handler = CommandHandler("start", start)
     create_handler = CommandHandler("create", create)
     free_handler = CommandHandler("free", free)
+    dump_handler = CommandHandler("dump", dump)
     application.add_handler(start_handler)
     application.add_handler(create_handler)
     application.add_handler(free_handler)
+    application.add_handler(dump_handler)
 
     application.run_polling()
 
