@@ -18,6 +18,22 @@ ORDER_DAY = {
     6: "воскресение"
 }
 
+def read_db():
+    sch_db = pd.read_csv("./data/schedule.csv")
+    stu_db = pd.read_csv("./data/students.csv", dtype={
+        "username": "str",
+        "id": "str"
+    })
+    ass_db = pd.read_csv("./data/assistants.csv", dtype={
+        "username": "str",
+        "id": "str"
+    })
+    return sch_db, stu_db, ass_db
+
+def write_db(sch_db, stu_db, ass_db):
+    stu_db.to_csv("./data/students.csv", sep=",", index=None)
+    ass_db.to_csv("./data/assistants.csv", sep=",", index=None)
+    sch_db.to_csv("./data/schedule.csv", sep=",", index=None)
 
 def format_time(hour, minute):
     hour = min(int(hour), 23)

@@ -55,26 +55,21 @@ ASS_DB = pd.read_csv("./data/assistants.csv", dtype={
     "id": "str"
 })
 
-def read_db():
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv", dtype={
-        "username": "str",
-        "id": "str"
-    })
-    ASS_DB = pd.read_csv("./data/assistants.csv", dtype={
-        "username": "str",
-        "id": "str"
-    })
-    return SCH_DB, STU_DB, ASS_DB
+async def read(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
 
-def write_db():
-    global SCH_DB
-    global STU_DB
-    global ASS_DB
+    user = update.message.from_user
+    username = user.username
+
+    if not (username == ADMIN):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="вас нет в базе")
+        return ROUTE
     
-    STU_DB.to_csv("./data/students.csv", sep=",", index=None)
-    ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
+    
+    SCH_DB, STU_DB, ASS_DB = read_db()
+    response = "данные сохранены"
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    return ROUTE
 
 async def dump(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
@@ -84,7 +79,7 @@ async def dump(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="вас нет в базе")
         return ROUTE
     
-    write_db()
+    write_db(SCH_DB, STU_DB, ASS_DB)
     response = "данные сохранены"
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return ROUTE
@@ -504,10 +499,12 @@ def main() -> None:
     create_handler = CommandHandler("create", create)
     free_handler = CommandHandler("free", free)
     dump_handler = CommandHandler("dump", dump)
+    read_handler = CommandHandler("read", read)
     application.add_handler(start_handler)
     application.add_handler(create_handler)
     application.add_handler(free_handler)
     application.add_handler(dump_handler)
+    application.add_handler(read_handler)
 
     application.run_polling()
 

@@ -4,6 +4,7 @@ import pandas as pd
 import asyncio
 import warnings
 
+from utils import *
 from datetime import datetime
 
 from TOKEN import TOKEN
@@ -30,15 +31,7 @@ while True:
     hour, minute = map(int, str(now.time()).split(":")[:2])
     hour += 3
     
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv", dtype={
-        "username": "str",
-        "id": "str"
-    })
-    ASS_DB = pd.read_csv("./data/assistants.csv", dtype={
-        "username": "str",
-        "id": "str"
-    })
+    SCH_DB, STU_DB, ASS_DB = read_db()
     
     distance = (SCH_DB["hour"] - hour) * 60 + (SCH_DB["minute"] - minute)
     condition = (SCH_DB["booked"] == 1) & \

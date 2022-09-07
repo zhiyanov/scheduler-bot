@@ -5,7 +5,7 @@ import pandas as pd
 import asyncio
 
 from TOKEN import TOKEN
-from utils import DAY_ORDER, ORDER_DAY
+from utils import *
 
 CLEAN_HOUR = 22
 CLEAN_MINUTE = 59
@@ -26,9 +26,7 @@ while True:
     hour, minute = map(int, str(now.time()).split(":")[:2])
     hour += 3
     
-    SCH_DB = pd.read_csv("./data/schedule.csv")
-    STU_DB = pd.read_csv("./data/students.csv")
-    ASS_DB = pd.read_csv("./data/assistants.csv")
+    SCH_DB, STU_DB, ASS_DB = read_db() 
     
     distance = (CLEAN_HOUR - hour) * 60 + (CLEAN_MINUTE - minute)
     if distance > 0:
@@ -40,6 +38,6 @@ while True:
     
     SCH_DB.loc[condition, "student"] = None
     SCH_DB.loc[condition, "booked"] = 0
-    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
-    
+    write_db(SCH_DB, STU_DB, ASS_DB)
+ 
     time.sleep(3600)
