@@ -2,18 +2,25 @@ import time
 import telegram
 import pandas as pd
 import asyncio
+import warnings
 
 from datetime import datetime
 
 from TOKEN import TOKEN
 from utils import DAY_ORDER, ORDER_DAY
 
-async def send(bot, cid, text):
-    time.sleep(20)
-    await bot.send_message(
-        chat_id=cid,
-        text=text
-    )
+ 
+warnings.filterwarnings("ignore")
+
+async def send(bot, cids, texts):
+    messages = []
+    for cid, text in zip(cids, texts):
+        messages.append(
+            bot.send_message(
+                chat_id=cid, text=text
+            )
+        )
+    await asyncio.gather(*messages)
 
 bot = telegram.Bot(token=TOKEN)
 while True:
@@ -38,7 +45,6 @@ while True:
         (SCH_DB["day"] == day) & \
         (distance == 15)
     result_db = SCH_DB.loc[condition]
-    print(result_db)
     
     if len(result_db):
         append = SCH_DB.loc[condition]
@@ -47,7 +53,8 @@ while True:
         archive = pd.read_csv("./data/archive.csv", sep=",")
         archive = archive.append(append, ignore_index=True)
         archive.to_csv("./data/archive.csv", sep=",", index=None)
-
+    
+    cids, texts = [], []
     for i, slot in result_db.iterrows():
         assistant = slot["assistant"]
         assistant_id = ASS_DB.loc[ASS_DB["username"] == assistant, "id"].values[0]
@@ -55,12 +62,20 @@ while True:
         student_id = STU_DB.loc[STU_DB["username"] == student, "id"].values[0]
 
         text = f"сегодня в {slot['hour']}:{slot['minute']} у вас назначена встреча с "
+        if (len(STU_DB.loc[STU_DB["username"] == student]) > 0) and (student_id):
+            cids.append(student_id)
+            texts.append(text + f"@{slot['assistant']}")
+            print(student_id)
+
         if (len(ASS_DB.loc[ASS_DB["username"] == assistant]) > 0) and (assistant_id):
-            asyncio.run(send(bot, assistant_id, text + f"@{slot['student']}"))
+            cids.append(assistant_id)
+            texts.append(text + f"@{slot['student']}")
             print(assistant_id)
 
-        if (len(STU_DB.loc[STU_DB["username"] == student]) > 0) and (student_id):
-            asyncio.run(send(bot, student_id, text + f"@{slot['assistant']}"))
-            print(student_id)
-    
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(send(bot, cids, texts))
+    except:
+        loop.close()
+
     time.sleep(50)

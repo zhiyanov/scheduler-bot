@@ -11,11 +11,31 @@ from telegram.ext import (
 import pandas as pd
 from datetime import datetime
 
+import warnings
+
 from TOKEN import TOKEN
 from utils import *
 
+DESCRIPTION = \
+'''Как пользоваться этим ботом:
+/start -- описание этого бота;
+/menu -- основная команда для студентов, вызывает меню.
+
+Остaльные команды предназначены для ассистентов:
+/create понедельник 18 15 --  создает временой слот в понедельник в 18 часов 15 минут;
+/create понедельник 18 15 19 20 13 --  создает набор временых слотов в понедельник, начиная с 18 часов 15 минут до 19 часов 20 минут, с шагом в 13 минут;
+/free понедельник 18 15 -- удаляет временной слот в понедельник в 18 часов 15 минут;
+/free понедельник 18 15 19 20 -- удаляет временные слоты в понедельник, начиная с 18 часов 15 минут до 19 часов 20 минут;
+Дни недели, часы, минуты и временные интервалы являются аргументами, их можно менять.
+
+За 15 минут до забронированного слота студенту и ассистенту придет напоминание о запланированной встрече.
+'''
+
 # States
 ROUTE = 0
+
+
+warnings.filterwarnings("ignore")
 
 # Enable logging
 logging.basicConfig(
@@ -37,6 +57,28 @@ def read_db():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
+    user = update.message.from_user
+    username = user.username
+
+    if not ((username in set(ASS_DB["username"])) or (username in set(STU_DB["username"]))):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="вас нет в базе")
+        return ROUTE
+
+    chat_id = str(int(update.message.chat.id))
+
+    if username in set(STU_DB["username"]):
+        STU_DB.loc[STU_DB["username"] == username, "id"] = chat_id
+        STU_DB.to_csv("./data/students.csv", sep=",", index=None)
+    if username in set(ASS_DB["username"]):
+        ASS_DB.loc[ASS_DB["username"] == username, "id"] = chat_id
+        ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
+    
+    response = DESCRIPTION
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+    return ROUTE
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    SCH_DB, STU_DB, ASS_DB = read_db()
     
     user = update.message.from_user
     username = user.username
@@ -47,7 +89,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ROUTE
 
-    chat_id = str(update.message.chat.id)
+    chat_id = str(int(update.message.chat.id))
 
     if username in set(STU_DB["username"]):
         STU_DB.loc[STU_DB["username"] == username, "id"] = chat_id
@@ -57,8 +99,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
 
     keyboard = [
-        [InlineKeyboardButton("расписание", callback_data="SCHEDULE"),
-        InlineKeyboardButton("бронирование", callback_data="BOOK"),
+        # [InlineKeyboardButton("расписание", callback_data="SCHEDULE"),
+        [InlineKeyboardButton("бронирование", callback_data="BOOK"),
         InlineKeyboardButton("освобождение", callback_data="CLEAR")]        
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -81,7 +123,6 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         reply_markup=reply_markup
     )
     return ROUTE
-
 
 async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
@@ -139,7 +180,6 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         text=response
     )
     return ROUTE
-
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
@@ -319,7 +359,7 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return ROUTE
 
-async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     username = update.message.chat.username
@@ -343,7 +383,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if (len(info) == 6):
         end_hour, end_minute = format_time(int(info[3]), int(info[4]))
         _, duration = format_time(0, int(info[5]))
-        duration = min(15, duration)
+        duration = min(1, duration)
 
         start_minute += duration
         while (end_hour - start_hour) * 60 + end_minute - start_minute >= 0:
@@ -381,7 +421,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return ROUTE
 
-async def free(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     username = update.message.chat.username
@@ -421,7 +461,7 @@ def main() -> None:
     application = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("menu", menu)],
         states={
             ROUTE: [
                 CallbackQueryHandler(schedule, pattern="^" + "SCHEDULE" + "$"),
@@ -432,12 +472,14 @@ def main() -> None:
                 CallbackQueryHandler(clear_slot, pattern="CLEAR_*")
             ]
         },
-        fallbacks=[CommandHandler("start", start)],
+        fallbacks=[CommandHandler("menu", menu)],
     )
     application.add_handler(conv_handler)
 
-    create_handler = CommandHandler('create', create)
-    free_handler = CommandHandler('free', free)
+    start_handler = CommandHandler("start", start)
+    create_handler = CommandHandler("create", create)
+    free_handler = CommandHandler("free", free)
+    application.add_handler(start_handler)
     application.add_handler(create_handler)
     application.add_handler(free_handler)
 
