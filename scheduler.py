@@ -14,7 +14,6 @@ async def send(bot, cid, text):
         text=text
     )
 
-
 bot = telegram.Bot(token=TOKEN)
 while True:
     now = datetime.datetime.now()
@@ -41,14 +40,10 @@ while True:
         
         text = f"сегодня в {slot['hour']}:{slot['minute']} у вас назначена встреча с "
         if len(ASS_DB.loc[ASS_DB["username"] == assistant]) > 0:
-            print(text + f"@{slot['student']}")
-            print(assistant_id)
             asyncio.run(send(bot, assistant_id, text + f"@{slot['student']}"))
 
         if len(STU_DB.loc[STU_DB["username"] == student]) > 0:
-            print(text + f"@{slot['student']}")
-            print(student_id)
-            # asyncio.run(send(bot, student_id, text + f"@{slot['assistant']}"))
+            asyncio.run(send(bot, student_id, text + f"@{slot['assistant']}"))
     
     time.sleep(30)
 

@@ -30,7 +30,7 @@ def read_db():
     return SCH_DB, STU_DB, ASS_DB
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
     
     user = update.message.from_user
     username = user.username
@@ -78,7 +78,7 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
     query_type = query["data"].lstrip("SCHEDULE_")
@@ -136,7 +136,7 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query
 
@@ -177,7 +177,7 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
     username = query["message"]["chat"]["username"]
@@ -207,21 +207,22 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB.loc[condition, "booked"] = 1
     SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
     
-    dt = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     append = SCH_DB.loc[condition]
-    append["log"] = [dt] * len(append)
+    append["log"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
     archive = pd.read_csv("./data/archive.csv", sep=",")
-    archive = pd.concat([archive, append], axis=0)
+    archive = archive.append(append, ignore_index=True)
     archive.to_csv("./data/archive.csv", sep=",", index=None)
 
-    response = f'cлот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistant"]}'
+    # response = f'cлот забронирован, за 5 минут до сдачи можно написать @{SCH_DB.loc[condition]["assistant"]}'
+    response = 'cлот забронирован'
     await query.edit_message_text(
         text=response
     )
     return ROUTE
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query 
     username = query["message"]["chat"]["username"]
@@ -276,7 +277,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query 
     username = query["message"]["chat"]["username"]
@@ -320,7 +321,7 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
 
     username = update.message.chat.username
 
@@ -381,7 +382,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ROUTE
 
 async def free(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _, STU_DB, ASS_DB = read_db()
+    SCH_DB, STU_DB, ASS_DB = read_db()
 
     username = update.message.chat.username
 
