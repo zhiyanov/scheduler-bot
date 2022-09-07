@@ -43,6 +43,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+SCH_DB = pd.read_csv("./data/schedule.csv")
+STU_DB = pd.read_csv("./data/students.csv", dtype={
+    "username": "str",
+    "id": "str"
+})
+ASS_DB = pd.read_csv("./data/assistants.csv", dtype={
+    "username": "str",
+    "id": "str"
+})
+
 def read_db():
     SCH_DB = pd.read_csv("./data/schedule.csv")
     STU_DB = pd.read_csv("./data/students.csv", dtype={
@@ -54,6 +65,15 @@ def read_db():
         "id": "str"
     })
     return SCH_DB, STU_DB, ASS_DB
+
+def write_db():
+    global SCH_DB
+    global STU_DB
+    global ASS_DB
+    
+    STU_DB.to_csv("./data/students.csv", sep=",", index=None)
+    ASS_DB.to_csv("./data/assistants.csv", sep=",", index=None)
+    SCH_DB.to_csv("./data/schedule.csv", sep=",", index=None)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
