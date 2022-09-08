@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 
 
 DAY_ORDER = {
@@ -20,6 +21,11 @@ ORDER_DAY = {
     5: "суббота",
     6: "воскресение"
 }
+
+def format_minute(time):
+    for i in range(0, 10):
+        time = time.replace(f":{i}, ", f":0{i}, ")
+    return time
 
 def read_db():
     sch_db = pd.read_csv("./data/schedule.csv")

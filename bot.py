@@ -8,6 +8,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 
+import re
 import pandas as pd
 from datetime import datetime
 
@@ -23,13 +24,15 @@ DESCRIPTION = \
 /menu -- основная команда для студентов, вызывает меню.
 
 Остaльные команды предназначены для ассистентов:
-/create понедельник 18 15 --  создает временой слот в понедельник в 18 часов 15 минут;
-/create понедельник 18 15 19 20 13 --  создает набор временых слотов в понедельник, начиная с 18 часов 15 минут до 19 часов 20 минут, с шагом в 13 минут;
-/free понедельник 18 15 -- удаляет временной слот в понедельник в 18 часов 15 минут;
-/free понедельник 18 15 19 20 -- удаляет временные слоты в понедельник, начиная с 18 часов 15 минут до 19 часов 20 минут;
+/create понедельник 18:15 --  создает временой слот в понедельник в 18 часов 15 минут;
+/create понедельник 18:15 19:20 13 --  создает набор временых слотов в понедельник, начиная с 18 часов 15 минут до 19 часов 20 минут, с шагом в 13 минут;
+/free понедельник 18:15 -- удаляет временной слот в понедельник в 18 часов 15 минут;
+/free понедельник 18:15 19:20 -- удаляет временные слоты в понедельник, начиная с 18 часов 15 минут до 19 часов 20 минут;
 Дни недели, часы, минуты и временные интервалы являются аргументами, их можно менять.
 
 За 15 минут до забронированного слота студенту и ассистенту придет напоминание о запланированной встрече.
+
+В 23:50 текущего вечера происходит отмена бронирования слотов текущего дня.
 '''
 
 # States
@@ -126,8 +129,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     keyboard = [
         [InlineKeyboardButton("расписание", callback_data="SCHEDULE")],
-        [InlineKeyboardButton("бронирование", callback_data="BOOK"),
-        InlineKeyboardButton("освобождение", callback_data="CLEAR")]        
+        [InlineKeyboardButton("забронировать слот", callback_data="BOOK")],
+        [InlineKeyboardButton("освободить слот", callback_data="CLEAR")]        
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -140,8 +143,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     keyboard = [
-        [InlineKeyboardButton("свободен", callback_data="SCHEDULE_FREE"),
-        InlineKeyboardButton("занят", callback_data="SCHEDULE_BOOKED")]
+        [InlineKeyboardButton("свобдные", callback_data="SCHEDULE_FREE"),
+        InlineKeyboardButton("занятые", callback_data="SCHEDULE_BOOKED")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
@@ -197,6 +200,7 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     for i, row in response_db.iterrows():
         for column in columns:
             response += str(row[column]) + ", "
+        response = format_minute(response)
         response = response[:-2] + "\n"
     if response == "":
        response = "ничего не найдено\n"
@@ -211,6 +215,20 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query
+    
+    username = query["message"]["chat"]["username"]
+    if username not in set(STU_DB["username"]):
+        await query.edit_message_text(
+            text="вac нет в базе студентов"
+        )
+        return ROUTE
+    
+    condition = (SCH_DB["booked"] == 1) & (SCH_DB["student"] == username)
+    if len(SCH_DB.loc[condition]) > 0:
+        await query.edit_message_text(
+            text="у вас уже есть забронированный слот"
+        )
+        return ROUTE
 
     condition = (SCH_DB["booked"] == 0)
     response_db = SCH_DB.loc[condition]
@@ -236,9 +254,12 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         text = ""
         for column in columns:
            text += row[column] + ", "
+        context = str(text[:-2])
+        text = format_minute(text)
         text = text[:-2]
+        
         keyboard.append( 
-            [InlineKeyboardButton(text, callback_data="BOOK_" + text)],
+            [InlineKeyboardButton(text, callback_data="BOOK_" + context)],
         )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -252,10 +273,18 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
+
     username = query["message"]["chat"]["username"]
     if not (username in set(STU_DB["username"])):
         await query.edit_message_text(
-            text="вас нет в базе"
+            text="вас нет в базе студентов"
+        )
+        return ROUTE
+    
+    condition = (SCH_DB["booked"] == 1) & (SCH_DB["student"] == username)
+    if len(SCH_DB.loc[condition]) > 0:
+        await query.edit_message_text(
+            text="у вас уже есть забронированный слот"
         )
         return ROUTE
 
@@ -275,11 +304,17 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     condition = condition.idxmax() if condition.any() else np.repeat(False, len(SCH_DB))
 
+    time = str(SCH_DB.loc[condition, "day"].values[0]) + \
+        ", " + str(SCH_DB.loc[condition, "hour"].values[0]) + \
+        ":" + str(SCH_DB.loc[condition, "minute"].values[0]) + ", " 
+    time = format_minute(time)
+    time = time[:-2]
+    
     SCH_DB.loc[condition, "student"] = username
     SCH_DB.loc[condition, "booked"] = 1
     
     write_db(SCH_DB, STU_DB, ASS_DB)
-    response = 'cлот забронирован'
+    response = f'cлот [{time}] забронирован'
     await query.edit_message_text(
         text=response
     )
@@ -329,9 +364,12 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         text = ""
         for column in columns:
            text += row[column] + ", "
+        context = str(text[:-2])
+        text = format_minute(text)
         text = text[:-2]
+        
         keyboard.append( 
-            [InlineKeyboardButton(text, callback_data="CLEAR_" + text)],
+            [InlineKeyboardButton(text, callback_data="CLEAR_" + context)],
         )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -372,11 +410,17 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ROUTE
     
+    time = str(SCH_DB.loc[condition, "day"].values[0]) + \
+        ", " + str(SCH_DB.loc[condition, "hour"].values[0]) + \
+        ":" + str(SCH_DB.loc[condition, "minute"].values[0]) + ", "
+    time = format_minute(time)
+    time = time[:-2]
+    
     SCH_DB.loc[condition, "student"] = None
     SCH_DB.loc[condition, "booked"] = 0
 
     write_db(SCH_DB, STU_DB, ASS_DB)
-    response = f'cлот освобожден, об этом можно написать @{othername}'
+    response = f'cлот [{time}] освобожден, об этом можно написать @{othername}'
     await query.edit_message_text(
         text=response
     )
@@ -387,7 +431,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     username = update.message.chat.username
 
-    info = update.message.text.split(" ")[1:]
+    info = re.split(" |\:", update.message.text)[1:]
     info = [item.lower() for item in info]
     if not create_checker(info):
         response = "неверный формат команды"
@@ -449,7 +493,7 @@ async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     username = update.message.chat.username
 
-    info = update.message.text.split(" ")[1:]
+    info = re.split(" |\:", update.message.text)[1:]
     info = [item.lower() for item in info]
     if not free_checker(info):
         response = "неверный формат запроса"
@@ -457,7 +501,7 @@ async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ROUTE
 
     if not (username in set(ASS_DB["username"])):
-        response = "у вас нет доступа к этой команде"
+        response = "вас нет в базе ассистентов"
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
         return ROUTE
 

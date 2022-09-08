@@ -7,8 +7,8 @@ import asyncio
 from TOKEN import TOKEN
 from utils import *
 
-CLEAN_HOUR = 22
-CLEAN_MINUTE = 59
+CLEAN_HOUR = 23
+CLEAN_MINUTE = 50
 
 
 async def send(bot, cid, text):
@@ -30,7 +30,7 @@ while True:
     
     distance = (CLEAN_HOUR - hour) * 60 + (CLEAN_MINUTE - minute)
     if distance > 0:
-        time.sleep(3600)
+        time.sleep(60)
         continue
 
     condition = (SCH_DB["booked"] == 1) & \
@@ -40,4 +40,4 @@ while True:
     SCH_DB.loc[condition, "booked"] = 0
     write_db(SCH_DB, STU_DB, ASS_DB)
  
-    time.sleep(3600)
+    time.sleep(60)
