@@ -1,3 +1,6 @@
+import pandas as pd
+
+
 DAY_ORDER = {
     "понедельник": 0,
     "вторник": 1,

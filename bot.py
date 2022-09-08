@@ -85,7 +85,7 @@ async def dump(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    SCH_DB, STU_DB, ASS_DB = read_db(
+    SCH_DB, STU_DB, ASS_DB = read_db()
 
     user = update.message.from_user
     username = user.username
