@@ -144,7 +144,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     keyboard = [
-        [InlineKeyboardButton("свобдные", callback_data="SCHEDULE_FREE"),
+        [InlineKeyboardButton("свободные", callback_data="SCHEDULE_FREE"),
         InlineKeyboardButton("занятые", callback_data="SCHEDULE_BOOKED")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
