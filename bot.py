@@ -252,15 +252,16 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ])[[
         "day",
         "time",
+        "assistant"
     ]].drop_duplicates()
     
-    columns = response_db.columns.to_list()
+    columns = response_db.columns.to_list()[:-1]
     keyboard = []
     for i, row in response_db.iterrows():
         text = ""
         for column in columns:
            text += row[column] + ", "
-        context = str(text[:-2])
+        context = text + row["assistant"]
         text = format_minute(text)
         text = text[:-2]
         
@@ -295,13 +296,14 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         )
         return ROUTE
 
-    day, time = query["data"].lstrip("BOOK_").split(", ")
+    day, time, assistant = query["data"].lstrip("BOOK_").split(", ")
     hour, minute = map(int, time.split(":"))
 
     condition = (SCH_DB["booked"] == 0) & \
         (SCH_DB["day"] == day) & \
         (SCH_DB["hour"] == hour) & \
-        (SCH_DB["minute"] == minute)
+        (SCH_DB["minute"] == minute) & \
+        (SCH_DB["assistant"] == assistant)
 
     if not len(SCH_DB.loc[condition]):
         await query.edit_message_text(
@@ -311,9 +313,12 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     condition = condition.idxmax() if condition.any() else np.repeat(False, len(SCH_DB))
 
-    time = str(SCH_DB.loc[condition, "day"].values[0]) + \
-        ", " + str(SCH_DB.loc[condition, "hour"].values[0]) + \
-        ":" + str(SCH_DB.loc[condition, "minute"].values[0]) + ", " 
+    # time = str(SCH_DB.loc[condition, "day"].values[0]) + \
+    #     ", " + str(SCH_DB.loc[condition, "hour"].values[0]) + \
+    #     ":" + str(SCH_DB.loc[condition, "minute"].values[0]) + ", " 
+    time = str(SCH_DB.loc[condition, "day"]) + \
+        ", " + str(SCH_DB.loc[condition, "hour"]) + \
+        ":" + str(SCH_DB.loc[condition, "minute"]) + ", " 
     time = format_minute(time)
     time = time[:-2]
     
@@ -413,15 +418,20 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         (SCH_DB["minute"] == minute) & \
         (SCH_DB[f"{other}"] == othername)
 
+    condition = condition.idxmax() if condition.any() else np.repeat(False, len(SCH_DB))
+
     if not len(SCH_DB.loc[condition]):
         await query.edit_message_text(
             text="этот слот уже успели освободить"
         )
         return ROUTE
     
-    time = str(SCH_DB.loc[condition, "day"].values[0]) + \
-        ", " + str(SCH_DB.loc[condition, "hour"].values[0]) + \
-        ":" + str(SCH_DB.loc[condition, "minute"].values[0]) + ", "
+    # time = str(SCH_DB.loc[condition, "day"].values[0]) + \
+    #     ", " + str(SCH_DB.loc[condition, "hour"].values[0]) + \
+    #     ":" + str(SCH_DB.loc[condition, "minute"].values[0]) + ", "
+    time = str(SCH_DB.loc[condition, "day"]) + \
+        ", " + str(SCH_DB.loc[condition, "hour"]) + \
+        ":" + str(SCH_DB.loc[condition, "minute"]) + ", "
     time = format_minute(time)
     time = time[:-2]
     
