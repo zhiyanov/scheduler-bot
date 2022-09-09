@@ -451,7 +451,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if (len(info) == 6):
         end_hour, end_minute = format_time(int(info[3]), int(info[4]))
         _, duration = format_time(0, int(info[5]))
-        duration = min(1, duration)
+        duration = max(15, duration)
 
         start_minute += duration
         while (end_hour - start_hour) * 60 + end_minute - start_minute >= 0:
