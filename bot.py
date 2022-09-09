@@ -59,6 +59,7 @@ ASS_DB = pd.read_csv("./data/assistants.csv", dtype={
 })
 
 async def read(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     user = update.message.from_user
@@ -88,6 +89,7 @@ async def dump(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     user = update.message.from_user
@@ -110,6 +112,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
     
     user = update.message.from_user
@@ -155,6 +158,7 @@ async def schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
@@ -213,6 +217,7 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return ROUTE
 
 async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query
@@ -271,6 +276,7 @@ async def book(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query
@@ -322,6 +328,7 @@ async def book_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
     
     query = update.callback_query 
@@ -380,6 +387,7 @@ async def clear(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     query = update.callback_query 
@@ -428,6 +436,7 @@ async def clear_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     username = update.message.chat.username
@@ -490,6 +499,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ROUTE
 
 async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    global SCH_DB, STU_DB, ASS_DB
     SCH_DB, STU_DB, ASS_DB = read_db()
 
     username = update.message.chat.username
