@@ -104,6 +104,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if username in set(ASS_DB["username"]):
         ASS_DB.loc[ASS_DB["username"] == username, "id"] = chat_id
     
+    write_db(SCH_DB, STU_DB, ASS_DB)
     response = DESCRIPTION
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return ROUTE
@@ -172,7 +173,7 @@ async def schedule_slot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         other = "assistant"
 
     condition = (SCH_DB["booked"] == booked)
-    if booked:
+    if (user == "assistant") or booked:
         condition = condition & \
             (SCH_DB[f"{user}"] == username)
     response_db = SCH_DB.loc[condition]
@@ -509,7 +510,7 @@ async def free(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     start_hour, start_minute = format_time(int(info[1]), int(info[2]))
 
     if (len(info) != 5):
-        end_hour, end_minute = start_hour, end_minute
+        end_hour, end_minute = start_hour, start_minute
     else:
         end_hour, end_minute = format_time(int(info[3]), int(info[4]))
 
