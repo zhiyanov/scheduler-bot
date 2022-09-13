@@ -8,7 +8,6 @@ from utils import *
 from datetime import datetime
 
 from TOKEN import TOKEN
-from utils import DAY_ORDER, ORDER_DAY
 
  
 warnings.filterwarnings("ignore")
@@ -53,17 +52,18 @@ while True:
         assistant_id = ASS_DB.loc[ASS_DB["username"] == assistant, "id"].values[0]
         student = slot["student"]
         student_id = STU_DB.loc[STU_DB["username"] == student, "id"].values[0]
-
-        text = f"сегодня в {slot['hour']}:{slot['minute']} у вас назначена встреча с "
+        
+        stime = format_minute(f"{slot['hour']}:{slot['minute']}, ")[:-2]
+        text = f"сегодня в {stime} у вас назначена встреча с "
         if (len(STU_DB.loc[STU_DB["username"] == student]) > 0) and (student_id):
             cids.append(student_id)
             texts.append(text + f"@{slot['assistant']}")
-            print(student_id)
+            print(text + f"@{slot['assistant']}")
 
         if (len(ASS_DB.loc[ASS_DB["username"] == assistant]) > 0) and (assistant_id):
             cids.append(assistant_id)
             texts.append(text + f"@{slot['student']}")
-            print(assistant_id)
+            print(text + f"@{slot['student']}")
 
     loop = asyncio.get_event_loop()
     try:

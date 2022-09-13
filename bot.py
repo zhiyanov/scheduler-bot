@@ -473,7 +473,7 @@ async def create(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         duration = max(15, duration)
 
         start_minute += duration
-        while (end_hour - start_hour) * 60 + end_minute - start_minute >= 0:
+        while (end_hour - start_hour) * 60 + end_minute - start_minute > 0:
             if (start_minute >= 60):
                 start_hour += start_minute // 60
                 start_minute = start_minute % 60

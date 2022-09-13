@@ -30,12 +30,16 @@ while True:
     
     distance = (CLEAN_HOUR - hour) * 60 + (CLEAN_MINUTE - minute)
     if distance > 0:
-        time.sleep(60)
+        time.sleep(30)
         continue
 
     condition = (SCH_DB["booked"] == 1) & \
         (SCH_DB["day"] == day)
     
+    if not len(SCH_DB.loc[condition]):
+        time.sleep(30)
+        continue
+   
     SCH_DB.loc[condition, "student"] = None
     SCH_DB.loc[condition, "booked"] = 0
     write_db(SCH_DB, STU_DB, ASS_DB)
